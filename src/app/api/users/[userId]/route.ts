@@ -1,15 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
-import { seedIfNeeded, readCollection } from "@/lib/seed";
-import type { StoredUser } from "@/lib/seed";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ userId: string }> }
 ) {
-  seedIfNeeded();
   const { userId } = await params;
-  const user = readCollection<StoredUser>("users").find((u) => u.id === userId);
-  if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
-  const { password: _pw, ...safe } = user;
-  return NextResponse.json(safe);
+  const supabase = await createServerSupabaseClient();
+  const { data: rawU, error } = await supabase.from("profiles").select("*").eq("id", userId).single();
+  const u = rawU as any;
+
+  if (error || !u) {
+    return NextResponse.json({ error: "User not found" }, { status: 404 });
+  }
+
+  const mapped = {
+    id: u.id,
+    username: u.username,
+    name: u.name,
+    email: u.email,
+    avatar: u.avatar,
+    bio: u.bio,
+    college: u.college,
+    company: u.company,
+    location: u.location,
+    github: u.github,
+    portfolio: u.portfolio,
+    skills: u.skills,
+    builderDna: u.builder_dna,
+    funPrompts: u.fun_prompts,
+    aiSummary: u.ai_summary,
+    availability: u.availability,
+    interests: u.interests,
+    online: u.online,
+    createdAt: u.created_at,
+  };
+
+  return NextResponse.json(mapped);
 }

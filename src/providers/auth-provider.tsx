@@ -27,8 +27,13 @@ export function useAuth() {
 function createUserFromEmail(email: string): User {
   const name = email.split("@")[0].replace(/[._-]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
   const username = email.split("@")[0].toLowerCase().replace(/[^a-z0-9]/g, "");
+  let id = crypto.randomUUID ? crypto.randomUUID() : `00000000-0000-0000-0000-${Date.now()}`;
+  if (email === "alex@buildr.dev") id = "11111111-1111-1111-1111-111111111111";
+  if (email === "priya@buildr.dev") id = "22222222-2222-2222-2222-222222222222";
+  if (email === "jay@buildr.dev") id = "33333333-3333-3333-3333-333333333333";
+
   return {
-    id: `user_${Date.now()}`,
+    id,
     username,
     name,
     email,

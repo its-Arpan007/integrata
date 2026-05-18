@@ -87,25 +87,6 @@ create table public.teams (
   updated_at timestamptz default now()
 );
 
-alter table public.teams enable row level security;
-
-create policy "Team members can view their teams"
-  on public.teams for select
-  using (
-    exists (
-      select 1 from public.team_members
-      where team_members.team_id = teams.id
-      and team_members.user_id = auth.uid()
-    )
-  );
-
-create policy "Authenticated users can create teams"
-  on public.teams for insert
-  with check (auth.uid() = created_by);
-
-create policy "Team creators can update their teams"
-  on public.teams for update
-  using (auth.uid() = created_by);
 
 -- ==========================================
 -- 4. TEAM_MEMBERS TABLE
@@ -141,6 +122,26 @@ create policy "Team creators can add members"
     )
     or auth.uid() = user_id
   );
+  alter table public.teams enable row level security;
+
+create policy "Team members can view their teams"
+  on public.teams for select
+  using (
+    exists (
+      select 1 from public.team_members
+      where team_members.team_id = teams.id
+      and team_members.user_id = auth.uid()
+    )
+  );
+
+create policy "Authenticated users can create teams"
+  on public.teams for insert
+  with check (auth.uid() = created_by);
+
+create policy "Team creators can update their teams"
+  on public.teams for update
+  using (auth.uid() = created_by);
+
 
 -- ==========================================
 -- 5. TASKS TABLE

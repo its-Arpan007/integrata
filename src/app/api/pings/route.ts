@@ -1,57 +1,100 @@
 import { NextRequest, NextResponse } from "next/server";
-import { seedIfNeeded, readCollection, insertOne } from "@/lib/seed";
-import type { StoredPing, StoredUser } from "@/lib/seed";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 
-/** Hydrate a StoredPing with full user objects */
-function hydrate(ping: StoredPing, users: StoredUser[]) {
-  const strip = ({ password: _pw, ...u }: StoredUser) => u;
-  const fromUser = users.find((u) => u.id === ping.fromUserId);
-  const toUser = users.find((u) => u.id === ping.toUserId);
+// Helper to map DB profile to frontend User
+function mapProfile(u: any) {
+  if (!u) return null;
   return {
-    ...ping,
-    fromUser: fromUser ? strip(fromUser) : null,
-    toUser: toUser ? strip(toUser) : null,
+    id: u.id,
+    username: u.username,
+    name: u.name,
+    email: u.email,
+    avatar: u.avatar,
+    bio: u.bio,
+    college: u.college,
+    company: u.company,
+    location: u.location,
+    github: u.github,
+    portfolio: u.portfolio,
+    skills: u.skills,
+    builderDna: u.builder_dna,
+    funPrompts: u.fun_prompts,
+    aiSummary: u.ai_summary,
+    availability: u.availability,
+    interests: u.interests,
+    online: u.online,
+    createdAt: u.created_at,
   };
 }
 
-/**
- * GET /api/pings?userId=<id>
- * Returns all pings involving this user (inbox + sent).
- */
 export async function GET(req: NextRequest) {
-  seedIfNeeded();
   const userId = req.nextUrl.searchParams.get("userId");
   if (!userId) return NextResponse.json({ error: "userId required" }, { status: 400 });
 
-  const pings = readCollection<StoredPing>("pings").filter(
-    (p) => p.fromUserId === userId || p.toUserId === userId
-  );
-  const users = readCollection<StoredUser>("users");
-  return NextResponse.json(pings.map((p) => hydrate(p, users)));
+  const supabase = await createServerSupabaseClient();
+  const { data: pings, error } = await supabase
+    .from("pings")
+    .select(`
+      id, from_user_id, to_user_id, message, ai_suggested, status, created_at,
+      fromUser:profiles!pings_from_user_id_fkey(*),
+      toUser:profiles!pings_to_user_id_fkey(*)
+    `)
+    .or(`from_user_id.eq.${userId},to_user_id.eq.${userId}`);
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  const mapped = (pings || []).map((p: any) => ({
+    id: p.id,
+    fromUserId: p.from_user_id,
+    toUserId: p.to_user_id,
+    message: p.message,
+    aiSuggested: p.ai_suggested,
+    status: p.status,
+    createdAt: p.created_at,
+    fromUser: mapProfile(p.fromUser),
+    toUser: mapProfile(p.toUser),
+  }));
+
+  return NextResponse.json(mapped);
 }
 
-/**
- * POST /api/pings
- * Body: { fromUserId, toUserId, message, aiSuggested? }
- */
 export async function POST(req: NextRequest) {
-  seedIfNeeded();
   const { fromUserId, toUserId, message, aiSuggested = false } = await req.json();
   if (!fromUserId || !toUserId || !message) {
     return NextResponse.json({ error: "fromUserId, toUserId, message required" }, { status: 400 });
   }
 
-  const ping: StoredPing = {
-    id: `ping_${Date.now()}`,
-    fromUserId,
-    toUserId,
-    message,
-    aiSuggested,
-    status: "pending",
-    createdAt: new Date().toISOString(),
+  const supabase = await createServerSupabaseClient();
+  const { data: rawPing, error } = await supabase
+    .from("pings")
+    .insert({
+      from_user_id: fromUserId,
+      to_user_id: toUserId,
+      message,
+      ai_suggested: aiSuggested,
+    })
+    .select(`
+      id, from_user_id, to_user_id, message, ai_suggested, status, created_at,
+      fromUser:profiles!pings_from_user_id_fkey(*),
+      toUser:profiles!pings_to_user_id_fkey(*)
+    `)
+    .single();
+
+  const ping = rawPing as any;
+
+  if (error || !ping) return NextResponse.json({ error: error?.message || "Failed to create ping" }, { status: 500 });
+
+  const mapped = {
+    id: ping.id,
+    fromUserId: ping.from_user_id,
+    toUserId: ping.to_user_id,
+    message: ping.message,
+    aiSuggested: ping.ai_suggested,
+    status: ping.status,
+    createdAt: ping.created_at,
+    fromUser: mapProfile(ping.fromUser),
+    toUser: mapProfile(ping.toUser),
   };
 
-  insertOne("pings", ping);
-  const users = readCollection<StoredUser>("users");
-  return NextResponse.json(hydrate(ping, users), { status: 201 });
+  return NextResponse.json(mapped, { status: 201 });
 }

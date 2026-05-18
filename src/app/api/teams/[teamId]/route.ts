@@ -1,43 +1,114 @@
 import { NextRequest, NextResponse } from "next/server";
-import { seedIfNeeded, readCollection } from "@/lib/seed";
-import type { StoredTeam, StoredTeamMember, StoredTask, StoredMessage, StoredUser } from "@/lib/seed";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
+
+function mapProfile(u: any) {
+  if (!u) return null;
+  return {
+    id: u.id,
+    username: u.username,
+    name: u.name,
+    email: u.email,
+    avatar: u.avatar,
+    bio: u.bio,
+    college: u.college,
+    company: u.company,
+    location: u.location,
+    github: u.github,
+    portfolio: u.portfolio,
+    skills: u.skills,
+    builderDna: u.builder_dna,
+    funPrompts: u.fun_prompts,
+    aiSummary: u.ai_summary,
+    availability: u.availability,
+    interests: u.interests,
+    online: u.online,
+    createdAt: u.created_at,
+  };
+}
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ teamId: string }> }
 ) {
-  seedIfNeeded();
   const { teamId } = await params;
+  const supabase = await createServerSupabaseClient();
 
-  const teams = readCollection<StoredTeam>("teams");
-  const team = teams.find((t) => t.id === teamId);
-  if (!team) return NextResponse.json({ error: "Team not found" }, { status: 404 });
+  // Fetch team and members
+  const { data: rawTeam, error: teamError } = await supabase
+    .from("teams")
+    .select(`
+      id, name, description, project, status, created_at, created_by,
+      members:team_members(id, team_id, user_id, role, joined_at, user:profiles(*))
+    `)
+    .eq("id", teamId)
+    .single();
 
-  const users = readCollection<StoredUser>("users");
-  const strip = ({ password: _pw, ...u }: StoredUser) => u;
+  const team = rawTeam as any;
 
-  const rawMembers = readCollection<StoredTeamMember>("team_members").filter((m) => m.teamId === teamId);
-  const members = rawMembers.map((m) => {
-    const user = users.find((u) => u.id === m.userId);
-    return { ...m, user: user ? strip(user) : null };
-  });
+  if (teamError || !team) return NextResponse.json({ error: "Team not found" }, { status: 404 });
 
-  const tasks = readCollection<StoredTask>("tasks")
-    .filter((t) => t.teamId === teamId)
-    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-    .map((t) => {
-      const assignee = t.assigneeId ? users.find((u) => u.id === t.assigneeId) : null;
-      return { ...t, assignee: assignee ? strip(assignee) : null };
-    });
+  // Fetch tasks
+  const { data: tasks } = await supabase
+    .from("tasks")
+    .select(`
+      id, team_id, title, description, status, priority, assignee_id, created_by, created_at,
+      assignee:profiles!tasks_assignee_id_fkey(*)
+    `)
+    .eq("team_id", teamId)
+    .order("created_at", { ascending: true });
 
-  const messages = readCollection<StoredMessage>("messages")
-    .filter((m) => m.teamId === teamId)
-    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-    .slice(-50)
-    .map((m) => {
-      const user = users.find((u) => u.id === m.userId);
-      return { ...m, user: user ? strip(user) : null };
-    });
+  // Fetch messages
+  const { data: messages } = await supabase
+    .from("messages")
+    .select(`
+      id, team_id, user_id, content, type, created_at,
+      user:profiles(*)
+    `)
+    .eq("team_id", teamId)
+    .order("created_at", { ascending: true })
+    .limit(50);
 
-  return NextResponse.json({ ...team, members, tasks, messages });
+  const mappedTeam = {
+    id: team.id,
+    name: team.name,
+    description: team.description,
+    project: team.project,
+    status: team.status,
+    energy: "Active",
+    lastActive: "just now",
+    createdBy: team.created_by,
+    createdAt: team.created_at,
+    members: (team.members || []).map((m: any) => ({
+      id: m.id,
+      teamId: m.team_id,
+      userId: m.user_id,
+      role: m.role,
+      joinedAt: m.joined_at,
+      user: mapProfile(m.user),
+    })),
+    tasks: (tasks || []).map((t: any) => ({
+      id: t.id,
+      teamId: t.team_id,
+      title: t.title,
+      description: t.description,
+      status: t.status,
+      priority: t.priority,
+      assigneeId: t.assignee_id,
+      createdBy: t.created_by,
+      createdAt: t.created_at,
+      mood: "🧠 thinking", // Mocked mood for now
+      assignee: mapProfile(t.assignee),
+    })),
+    messages: (messages || []).map((m: any) => ({
+      id: m.id,
+      teamId: m.team_id,
+      userId: m.user_id,
+      content: m.content,
+      type: m.type,
+      createdAt: m.created_at,
+      user: mapProfile(m.user),
+    })),
+  };
+
+  return NextResponse.json(mappedTeam);
 }
