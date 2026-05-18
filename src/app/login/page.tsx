@@ -4,12 +4,20 @@ import { useState, useEffect, Suspense } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Sparkles, ArrowLeft, Loader2, AlertCircle } from "lucide-react";
+import {
+  Sparkles,
+  ArrowLeft,
+  Loader2,
+  AlertCircle,
+  Eye,
+  EyeOff,
+  Copy,
+  Check,
+} from "lucide-react";
 import { GlowButton } from "@/components/shared/glow-button";
 import { FloatingElements } from "@/components/shared/floating-elements";
 import { useAuth } from "@/providers/auth-provider";
-
-
+import { DEMO_ACCOUNTS } from "@/data/demo-accounts";
 
 function GoogleIcon({ className }: { className?: string }) {
   return (
@@ -22,11 +30,46 @@ function GoogleIcon({ className }: { className?: string }) {
   );
 }
 
+/** Small copy-to-clipboard button with a tick-feedback animation. */
+function CopyButton({ value, id }: { value: string; id: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(value);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <button
+      id={id}
+      onClick={handleCopy}
+      className="ml-1.5 shrink-0 text-text-muted hover:text-accent-purple transition-colors"
+      aria-label="Copy to clipboard"
+    >
+      <AnimatePresence mode="wait" initial={false}>
+        {copied ? (
+          <motion.span key="check" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }}>
+            <Check className="w-3.5 h-3.5 text-green-400" />
+          </motion.span>
+        ) : (
+          <motion.span key="copy" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }}>
+            <Copy className="w-3.5 h-3.5" />
+          </motion.span>
+        )}
+      </AnimatePresence>
+    </button>
+  );
+}
+
 function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { login, loginWithOAuth, isAuthenticated, isLoading } = useAuth();
+
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState<"google" | null>(null);
@@ -49,9 +92,7 @@ function LoginContent() {
   const handleEmailLogin = async () => {
     setError("");
     setLoading(true);
-
-    const result = await login(email);
-
+    const result = await login(email, password);
     if (result.success) {
       router.push("/onboarding");
     } else {
@@ -63,14 +104,8 @@ function LoginContent() {
   const handleOAuth = async (provider: "google") => {
     setError("");
     setOauthLoading(provider);
-
     const result = await loginWithOAuth(provider);
-
-    if (result.redirecting) {
-      // Supabase is handling the redirect to GitHub/Google — don't navigate
-      return;
-    }
-
+    if (result.redirecting) return;
     if (result.success) {
       router.push("/onboarding");
     } else {
@@ -80,12 +115,18 @@ function LoginContent() {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && email) {
+    if (e.key === "Enter" && email && password) {
       handleEmailLogin();
     }
   };
 
-  // Loading or already authenticated
+  /** Fill the form with a demo account's credentials. */
+  const fillDemo = (acc: (typeof DEMO_ACCOUNTS)[number]) => {
+    setEmail(acc.email);
+    setPassword(acc.password);
+    setError("");
+  };
+
   if (isLoading || isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center animated-gradient-bg">
@@ -95,19 +136,22 @@ function LoginContent() {
   }
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center px-4 animated-gradient-bg">
+    <div className="relative min-h-screen flex items-center justify-center px-4 py-10 animated-gradient-bg">
       <FloatingElements count={4} />
 
       <div className="relative z-10 w-full max-w-md">
         {/* Back button */}
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-8">
-          <Link href="/" className="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary transition-colors">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary transition-colors"
+          >
             <ArrowLeft className="w-4 h-4" />
             Back to home
           </Link>
         </motion.div>
 
-        {/* Card */}
+        {/* ── Login Card ── */}
         <motion.div
           initial={{ opacity: 0, y: 30, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -125,9 +169,7 @@ function LoginContent() {
               <Sparkles className="w-7 h-7 text-white" />
             </motion.div>
             <h1 className="text-2xl font-bold mb-2">Welcome to Buildr</h1>
-            <p className="text-sm text-text-secondary">
-              Sign in to find your perfect builder team
-            </p>
+            <p className="text-sm text-text-secondary">Sign in to find your perfect builder team</p>
           </div>
 
           {/* Error message */}
@@ -153,7 +195,13 @@ function LoginContent() {
                 fullWidth
                 size="lg"
                 disabled={!!oauthLoading}
-                icon={oauthLoading === "google" ? <Loader2 className="w-5 h-5 animate-spin" /> : <GoogleIcon className="w-5 h-5" />}
+                icon={
+                  oauthLoading === "google" ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <GoogleIcon className="w-5 h-5" />
+                  )
+                }
                 onClick={() => handleOAuth("google")}
               >
                 Continue with Google
@@ -168,11 +216,15 @@ function LoginContent() {
             <div className="flex-1 h-px bg-glass-border" />
           </div>
 
-          {/* Email form */}
+          {/* ── Email + Password form ── */}
           <div className="space-y-4">
+            {/* Email */}
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}>
-              <label className="block text-sm text-text-secondary mb-1.5">Email</label>
+              <label htmlFor="login-email" className="block text-sm text-text-secondary mb-1.5">
+                Email
+              </label>
               <input
+                id="login-email"
                 type="email"
                 value={email}
                 onChange={(e) => { setEmail(e.target.value); setError(""); }}
@@ -182,15 +234,43 @@ function LoginContent() {
               />
             </motion.div>
 
+            {/* Password */}
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.55 }}>
+              <label htmlFor="login-password" className="block text-sm text-text-secondary mb-1.5">
+                Password
+              </label>
+              <div className="relative">
+                <input
+                  id="login-password"
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => { setPassword(e.target.value); setError(""); }}
+                  onKeyDown={handleKeyDown}
+                  placeholder="••••••••"
+                  className="w-full px-4 py-3 pr-11 rounded-xl bg-white/5 border border-glass-border text-text-primary placeholder-text-muted text-sm focus:outline-none focus:border-accent-purple/50 focus:ring-1 focus:ring-accent-purple/20 transition-all"
+                />
+                <button
+                  id="toggle-password-visibility"
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary transition-colors"
+                  aria-label="Toggle password visibility"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </motion.div>
+
+            {/* Submit */}
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }}>
               <GlowButton
                 fullWidth
                 size="lg"
-                disabled={loading || !email}
+                disabled={loading || !email || !password}
                 icon={loading ? <Loader2 className="w-5 h-5 animate-spin" /> : undefined}
                 onClick={handleEmailLogin}
               >
-                {loading ? "Signing in..." : "Continue with Email"}
+                {loading ? "Signing in…" : "Sign In"}
               </GlowButton>
             </motion.div>
           </div>
@@ -205,6 +285,61 @@ function LoginContent() {
             By continuing, you agree to Buildr&apos;s Terms of Service and Privacy Policy.
           </motion.p>
         </motion.div>
+
+        {/* ── Demo Credentials Panel ── */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.8, type: "spring", stiffness: 80 }}
+          className="mt-5 glass-static rounded-2xl p-5"
+        >
+          <p className="text-xs font-semibold text-text-muted uppercase tracking-widest mb-3">
+            🧪 Demo Accounts — click to fill or copy
+          </p>
+
+          <div className="space-y-3">
+            {DEMO_ACCOUNTS.map((acc, i) => (
+              <motion.div
+                key={acc.email}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.85 + i * 0.06 }}
+                className="rounded-xl border border-glass-border bg-white/5 hover:bg-white/8 transition-colors"
+              >
+                {/* Header row — click to fill the form */}
+                <button
+                  id={`demo-account-${i}`}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-left"
+                  onClick={() => fillDemo(acc)}
+                  aria-label={`Use demo account ${acc.label}`}
+                >
+                  <span className="text-base">{acc.emoji}</span>
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-text-primary leading-none">{acc.label}</p>
+                    <p className="text-[10px] text-text-muted mt-0.5">{acc.role}</p>
+                  </div>
+                  <span className="ml-auto text-[10px] text-accent-purple font-medium shrink-0">
+                    click to fill ↗
+                  </span>
+                </button>
+
+                {/* Credential rows */}
+                <div className="border-t border-glass-border px-4 py-2 space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] text-text-muted w-14 shrink-0">Email</span>
+                    <span className="font-mono text-[11px] text-text-secondary truncate">{acc.email}</span>
+                    <CopyButton value={acc.email} id={`copy-email-${i}`} />
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] text-text-muted w-14 shrink-0">Password</span>
+                    <span className="font-mono text-[11px] text-text-secondary">{acc.password}</span>
+                    <CopyButton value={acc.password} id={`copy-password-${i}`} />
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </motion.div>
       </div>
     </div>
   );
@@ -212,11 +347,13 @@ function LoginContent() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center animated-gradient-bg">
-        <Loader2 className="w-8 h-8 text-accent-purple animate-spin" />
-      </div>
-    }>
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center animated-gradient-bg">
+          <Loader2 className="w-8 h-8 text-accent-purple animate-spin" />
+        </div>
+      }
+    >
       <LoginContent />
     </Suspense>
   );

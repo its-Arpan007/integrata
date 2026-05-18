@@ -1,22 +1,25 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Heart, X, Zap, Bookmark, MapPin, Briefcase, ChevronDown, Filter, Sparkles, RotateCcw, Eye } from "lucide-react";
 import Link from "next/link";
 import { Navbar } from "@/components/shared/navbar";
 import { GlowButton } from "@/components/shared/glow-button";
 import { FloatingElements } from "@/components/shared/floating-elements";
-import { MOCK_USERS } from "@/data/mock-users";
 import { cn } from "@/lib/utils";
 import type { User } from "@/types";
 import CardSwap, { Card, CardSwapHandle } from "@/components/CardSwap";
 import { ProfileCard } from "@/components/discover/profile-card";
 import { LiveActivityFeed } from "@/components/shared/live-activity-feed";
 import { AmbientMotion } from "@/components/shared/ambient-motion";
+import { useAuth } from "@/providers/auth-provider";
 
 export default function DiscoverPage() {
-  const [cards, setCards] = useState(MOCK_USERS.slice(0, 8));
+  const { user: currentUser } = useAuth();
+  const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [cards, setCards] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showFilters, setShowFilters] = useState(false);
   const [filterSkills, setFilterSkills] = useState<string[]>([]);
   const [filterTypes, setFilterTypes] = useState<string[]>([]);
@@ -26,6 +29,23 @@ export default function DiscoverPage() {
   const [saved, setSaved] = useState<string[]>([]);
   const [swipedCount, setSwipedCount] = useState(0);
   const cardSwapRef = useRef<CardSwapHandle>(null);
+
+  const [resolvedId, setResolvedId] = useState<string>("");
+
+  useEffect(() => {
+    fetch("/api/users")
+      .then((r) => r.json())
+      .then((data: User[]) => {
+        setAllUsers(data);
+        const match = data.find((u) => u.email === currentUser?.email);
+        const id = match?.id ?? currentUser?.id ?? "";
+        setResolvedId(id);
+        const others = data.filter(u => u.id !== id);
+        setCards(others);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [currentUser]);
 
   const onSwipeComplete = useCallback((dir: "left" | "right") => {
     setCards((prev) => prev.slice(1));
@@ -38,14 +58,29 @@ export default function DiscoverPage() {
     return true;
   });
 
-  const handleSendPing = () => {
-    setPingSent(true);
-    setTimeout(() => {
-      setPingSent(false);
-      setShowPingModal(null);
-      setPingMessage("");
-      cardSwapRef.current?.swipeRight();
-    }, 1200);
+  const handleSendPing = async () => {
+    if (!resolvedId || !showPingModal || !pingMessage.trim()) return;
+
+    try {
+      await fetch("/api/pings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fromUserId: resolvedId,
+          toUserId: showPingModal.id,
+          message: pingMessage,
+          aiSuggested: aiIcebreakers.includes(pingMessage),
+        }),
+      });
+
+      setPingSent(true);
+      setTimeout(() => {
+        setPingSent(false);
+        setShowPingModal(null);
+        setPingMessage("");
+        cardSwapRef.current?.swipeRight();
+      }, 1200);
+    } catch { /* ignore */ }
   };
 
   const handleSave = () => {
@@ -55,7 +90,8 @@ export default function DiscoverPage() {
   };
 
   const handleReset = () => {
-    setCards(MOCK_USERS.slice(0, 8));
+    const others = allUsers.filter(u => u.id !== resolvedId);
+    setCards(others);
     setSwipedCount(0);
   };
 
@@ -65,7 +101,15 @@ export default function DiscoverPage() {
     "Love your debugging trait 😂 I think our vibes would mesh well on a project!",
   ];
 
-  const currentUser = filteredCards[0];
+  const displayUser = allUsers.find(u => u.id === resolvedId);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center animated-gradient-bg">
+        <div className="w-8 h-8 border-2 border-accent-purple border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="w-full h-full relative">
@@ -91,7 +135,7 @@ export default function DiscoverPage() {
                   <span className="text-lg font-bold text-text-primary">{filteredCards.length}</span>
                 </div>
                 <div className="h-1 rounded-full bg-white/5 overflow-hidden">
-                  <motion.div animate={{ width: `${(filteredCards.length / MOCK_USERS.length) * 100}%` }} className="h-full rounded-full bg-gradient-to-r from-accent-purple to-accent-pink" />
+                  <motion.div animate={{ width: `${(filteredCards.length / Math.max(1, allUsers.length - 1)) * 100}%` }} className="h-full rounded-full bg-gradient-to-r from-accent-purple to-accent-pink" />
                 </div>
                 <div className="flex items-center justify-between mt-2 text-[10px] text-text-muted">
                   <span>{swipedCount} viewed</span>
@@ -134,25 +178,25 @@ export default function DiscoverPage() {
               )}
 
               {/* Current builder mini-profile */}
-              {currentUser && (
-                <motion.div key={currentUser.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="glass-static rounded-2xl p-4 border border-white/5 hidden lg:block">
+              {displayUser && (
+                <motion.div key={displayUser.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="glass-static rounded-2xl p-4 border border-white/5 hidden lg:block">
                   <div className="flex items-center gap-3 mb-3">
-                    <img src={currentUser.avatar} alt="" className="w-10 h-10 rounded-xl bg-bg-tertiary" />
+                    <img src={displayUser.avatar} alt="" className="w-10 h-10 rounded-xl bg-bg-tertiary" />
                     <div className="min-w-0">
-                      <div className="text-sm font-bold truncate">{currentUser.name}</div>
-                      <div className="text-[10px] text-text-muted">@{currentUser.username}</div>
+                      <div className="text-sm font-bold truncate">{displayUser.name}</div>
+                      <div className="text-[10px] text-text-muted">@{displayUser.username}</div>
                     </div>
                   </div>
-                  {currentUser.builderArchetype && (
-                    <span className="text-[9px] px-2 py-0.5 rounded bg-accent-purple/10 text-accent-purple font-bold">{currentUser.builderArchetype}</span>
+                  {displayUser.builderArchetype && (
+                    <span className="text-[9px] px-2 py-0.5 rounded bg-accent-purple/10 text-accent-purple font-bold">{displayUser.builderArchetype}</span>
                   )}
                   <div className="flex flex-wrap gap-1 mt-2">
-                    {currentUser.skills.slice(0, 4).map(s => (
+                    {(displayUser.skills || []).slice(0, 4).map(s => (
                       <span key={s} className="px-1.5 py-0.5 rounded text-[9px] bg-white/5 text-text-muted border border-white/5">{s}</span>
                     ))}
                   </div>
-                  <Link href={`/compatibility/${currentUser.id}`} className="flex items-center gap-1 text-[10px] text-accent-purple font-bold mt-3 hover:text-accent-purple/80 transition-colors">
-                    <Eye className="w-3 h-3" /> View full compatibility
+                  <Link href={`/profile`} className="flex items-center gap-1 text-[10px] text-accent-purple font-bold mt-3 hover:text-accent-purple/80 transition-colors">
+                    <Eye className="w-3 h-3" /> View profile
                   </Link>
                 </motion.div>
               )}
@@ -226,11 +270,11 @@ export default function DiscoverPage() {
                 </div>
 
                 <div className="relative group">
-                  <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={handleSave} className={cn("w-14 h-14 rounded-2xl glass-static border flex items-center justify-center transition-all", currentUser && saved.includes(currentUser.id) ? "border-accent-cyan/50 bg-accent-cyan/10 text-accent-cyan shadow-[0_0_15px_rgba(6,182,212,0.2)]" : "border-white/5 text-accent-cyan hover:bg-accent-cyan/10 hover:border-accent-cyan/30")}>
-                    <Bookmark className={cn("w-6 h-6", currentUser && saved.includes(currentUser.id) && "fill-accent-cyan")} />
+                  <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={handleSave} className={cn("w-14 h-14 rounded-2xl glass-static border flex items-center justify-center transition-all", filteredCards[0] && saved.includes(filteredCards[0].id) ? "border-accent-cyan/50 bg-accent-cyan/10 text-accent-cyan shadow-[0_0_15px_rgba(6,182,212,0.2)]" : "border-white/5 text-accent-cyan hover:bg-accent-cyan/10 hover:border-accent-cyan/30")}>
+                    <Bookmark className={cn("w-6 h-6", filteredCards[0] && saved.includes(filteredCards[0].id) && "fill-accent-cyan")} />
                   </motion.button>
                   <div className="absolute -top-10 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap bg-black/80 border border-white/10 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider text-accent-cyan pointer-events-none">
-                    {currentUser && saved.includes(currentUser.id) ? "Saved!" : "Save builder"}
+                    {filteredCards[0] && saved.includes(filteredCards[0].id) ? "Saved!" : "Save builder"}
                   </div>
                 </div>
               </motion.div>
@@ -273,7 +317,7 @@ export default function DiscoverPage() {
                 <div>
                   <h3 className="text-xl font-bold">Ping {showPingModal.name}</h3>
                   <p className="text-xs text-text-muted">
-                    {showPingModal.builderArchetype || showPingModal.skills.slice(0, 2).join(" · ")}
+                    {showPingModal.builderArchetype || (showPingModal.skills || []).slice(0, 2).join(" · ")}
                   </p>
                 </div>
               </div>

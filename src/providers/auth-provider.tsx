@@ -4,12 +4,13 @@ import { createContext, useContext, useState, useEffect, useCallback, useMemo, t
 import type { User } from "@/types";
 import { getAvatarUrl } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
+import { validateDemoCredentials } from "@/data/demo-accounts";
 
 interface AuthState {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (email: string) => Promise<{ success: boolean; error?: string }>;
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   loginWithOAuth: (provider: "google") => Promise<{ success: boolean; error?: string; redirecting?: boolean }>;
   logout: () => void;
   updateUser: (updates: Partial<User>) => void;
@@ -130,10 +131,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [user]);
 
-  const login = useCallback(async (email: string): Promise<{ success: boolean; error?: string }> => {
+  const login = useCallback(async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!email || !emailRegex.test(email)) {
       return { success: false, error: "Please enter a valid email address" };
+    }
+    if (!password || password.length < 6) {
+      return { success: false, error: "Password must be at least 6 characters" };
+    }
+
+    // Validate against known demo accounts
+    if (!validateDemoCredentials(email, password)) {
+      return { success: false, error: "Invalid email or password. Use one of the demo accounts below." };
     }
 
     const newUser = createUserFromEmail(email);

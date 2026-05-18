@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Hash, MessageSquare, KanbanSquare, UserCog, Lightbulb, Send, Plus, ArrowLeft, Sparkles, Zap, Coffee, Headphones, Check, Flame, Battery, Brain, X } from "lucide-react";
+import { Hash, MessageSquare, KanbanSquare, UserCog, Lightbulb, Send, Plus, ArrowLeft, Sparkles, Zap, Coffee, Headphones, Check, Flame, Battery, X } from "lucide-react";
 import Link from "next/link";
 import { Navbar } from "@/components/shared/navbar";
 import { GlassCard } from "@/components/shared/glass-card";
@@ -11,8 +11,9 @@ import { GlowButton } from "@/components/shared/glow-button";
 import { FloatingElements } from "@/components/shared/floating-elements";
 import { AmbientMotion } from "@/components/shared/ambient-motion";
 import { LiveActivityFeed } from "@/components/shared/live-activity-feed";
-import { MOCK_USERS } from "@/data/mock-users";
+import { useAuth } from "@/providers/auth-provider";
 import { cn } from "@/lib/utils";
+import type { User } from "@/types";
 
 type Tab = "chat" | "tasks" | "roles" | "ideas";
 
@@ -23,86 +24,15 @@ const tabs: { key: Tab; label: string; icon: typeof Hash }[] = [
   { key: "ideas", label: "AI Ideas", icon: Lightbulb },
 ];
 
-const TEAMS_DATA: Record<string, { name: string; project: string; energy: string; mood: string; members: typeof MOCK_USERS; messages: typeof mockMessagesNexus; tasks: typeof mockTasksNexus; roles: { role: string; desc: string }[]; ideas: typeof aiIdeasNexus }> = {};
-
-const membersNexus = [MOCK_USERS[0], MOCK_USERS[1], MOCK_USERS[2]];
-const membersAlpha = [MOCK_USERS[0], MOCK_USERS[3], MOCK_USERS[5]];
-
-const mockMessagesNexus = [
-  { id: "1", user: MOCK_USERS[1], content: "Hey team! I've been thinking about the architecture for the AI code review bot.", timestamp: "10:32 AM", type: "text" as const },
-  { id: "2", user: MOCK_USERS[0], content: "Nice! I was prototyping the frontend last night. Got a basic diff viewer working with syntax highlighting.", timestamp: "10:35 AM", type: "text" as const },
-  { id: "3", user: MOCK_USERS[2], content: "I can start on the UI design today. I'm thinking a Linear-inspired minimal interface.", timestamp: "10:38 AM", type: "text" as const },
-  { id: "4", user: MOCK_USERS[0], content: "Perfect. Let me set up the Next.js project with our standard config.", timestamp: "10:40 AM", type: "text" as const },
-  { id: "s1", user: MOCK_USERS[0], content: "✨ AI Suggestion: Consider using tree-sitter for AST parsing — it would give you language-agnostic code analysis capabilities.", timestamp: "10:41 AM", type: "ai-suggestion" as const },
-];
-
-const mockMessagesAlpha = [
-  { id: "a1", user: MOCK_USERS[3], content: "Alright team, the hackathon starts in 48 hours. What's our MVP scope?", timestamp: "9:15 AM", type: "text" as const },
-  { id: "a2", user: MOCK_USERS[0], content: "I say we go with the smart campus idea — room booking + AR navigation.", timestamp: "9:18 AM", type: "text" as const },
-  { id: "a3", user: MOCK_USERS[5], content: "Love it. I can handle the mobile UI and the map integration.", timestamp: "9:22 AM", type: "text" as const },
-  { id: "as1", user: MOCK_USERS[0], content: "✨ AI Suggestion: Use Mapbox GL for indoor mapping — it supports custom floor plans and has great React Native bindings.", timestamp: "9:23 AM", type: "ai-suggestion" as const },
-];
-
-type TaskStatus = "todo" | "in-progress" | "review" | "done";
-type TaskPriority = "low" | "medium" | "high" | "urgent";
-
-interface MockTask {
-  id: string;
-  title: string;
-  status: TaskStatus;
-  assignee: any;
-  priority: TaskPriority;
-  mood?: string;
-}
-
-const mockTasksNexus: MockTask[] = [
-  { id: "1", title: "Set up project repo", status: "done", assignee: MOCK_USERS[0], priority: "high", mood: "☕ running on caffeine" },
-  { id: "2", title: "Design system & component library", status: "in-progress", assignee: MOCK_USERS[2], priority: "high", mood: "🎨 making it pop" },
-  { id: "3", title: "Implement AI code analysis API", status: "in-progress", assignee: MOCK_USERS[1], priority: "urgent", mood: "💀 this API is fighting back" },
-  { id: "4", title: "Build diff viewer component", status: "todo", assignee: MOCK_USERS[0], priority: "medium", mood: "🚀 shipping tonight no matter what" },
-  { id: "5", title: "User auth & onboarding", status: "todo", assignee: MOCK_USERS[0], priority: "medium", mood: "🧠 deep thinking" },
-  { id: "6", title: "Integration tests", status: "todo", assignee: MOCK_USERS[1], priority: "low", mood: "🥱 procrastinating this" },
-];
-
-const mockTasksAlpha: MockTask[] = [
-  { id: "a1", title: "Define hackathon MVP scope", status: "done", assignee: MOCK_USERS[3], priority: "urgent", mood: "⚡ locked in" },
-  { id: "a2", title: "Set up React Native project", status: "in-progress", assignee: MOCK_USERS[5], priority: "high", mood: "📱 mobile grinding" },
-  { id: "a3", title: "Design campus map UI", status: "in-progress", assignee: MOCK_USERS[0], priority: "high", mood: "🗺️ mapping the chaos" },
-  { id: "a4", title: "Build room booking API", status: "todo", assignee: MOCK_USERS[3], priority: "medium", mood: "🔧 backend time" },
-  { id: "a5", title: "Prepare pitch deck", status: "todo", assignee: MOCK_USERS[0], priority: "medium", mood: "🎤 storytelling mode" },
-];
-
-const aiIdeasNexus = [
-  { title: "AI Code Review Bot", description: "Automated PR reviews using LLMs with context-aware suggestions, security analysis, and style enforcement.", tags: ["AI/ML", "DevOps"], reasons: ["Strong AI expertise detected", "Shared startup energy", "Night-owl collaboration style"] },
-  { title: "Developer Mood Tracker", description: "Track team mood and productivity patterns using commit messages and activity data for better sprint planning.", tags: ["Data Science", "Backend"], reasons: ["Similar chaotic debugging habits", "High frontend synergy", "Perfect for your fast shipping rate"] },
-  { title: "Smart Documentation Generator", description: "Auto-generate and keep docs in sync with code changes using AI-powered analysis.", tags: ["AI/ML", "Developer Tools"], reasons: ["Compliments the team's system design background", "Great hackathon potential", "Matches your UI focus"] },
-];
-
-const aiIdeasAlpha = [
-  { title: "Smart Campus Navigator", description: "AR-powered indoor navigation for university campuses with real-time room availability and event tracking.", tags: ["Mobile", "AR"], reasons: ["Perfect hackathon scope", "Strong mobile expertise", "High visual impact for demo"] },
-  { title: "Study Group Matchmaker", description: "AI-powered matching for study partners based on courses, schedule, and learning style.", tags: ["AI/ML", "Social"], reasons: ["Builds on your matching expertise", "Great for campus culture", "Quick to prototype"] },
-];
-
-TEAMS_DATA["1"] = {
-  name: "Team Nexus", project: "AI Code Review Bot", energy: "Chaotic Productive", mood: "Sleep Deprivation",
-  members: membersNexus, messages: mockMessagesNexus, tasks: mockTasksNexus,
-  roles: [
-    { role: "🎨 UI Wizard / Frontend Gremlin", desc: "Owns the frontend architecture and makes everything glow" },
-    { role: "🤖 AI Maxxer", desc: "Builds the chaotic AI pipelines and fights with local models" },
-    { role: "💀 Backend Goblin", desc: "Lives in the terminal, keeps the databases from collapsing" },
+const aiIdeasMap: Record<string, any[]> = {
+  "1": [
+    { title: "AI Code Review Bot", description: "Automated PR reviews using LLMs with context-aware suggestions, security analysis, and style enforcement.", tags: ["AI/ML", "DevOps"], reasons: ["Strong AI expertise detected", "Shared startup energy", "Night-owl collaboration style"] },
+    { title: "Developer Mood Tracker", description: "Track team mood and productivity patterns using commit messages and activity data for better sprint planning.", tags: ["Data Science", "Backend"], reasons: ["Similar chaotic debugging habits", "High frontend synergy", "Perfect for your fast shipping rate"] },
   ],
-  ideas: aiIdeasNexus,
-};
-
-TEAMS_DATA["2"] = {
-  name: "HackSquad Alpha", project: "Smart Campus App", energy: "Warming Up", mood: "Pre-Hackathon Hype",
-  members: membersAlpha, messages: mockMessagesAlpha, tasks: mockTasksAlpha,
-  roles: [
-    { role: "🚀 Project Lead / Full Stack", desc: "Coordinates the chaos and fills in the gaps" },
-    { role: "⚙️ Systems Architect", desc: "Designs the backend and keeps data flowing" },
-    { role: "📱 Mobile UI Specialist", desc: "Makes the app feel native and buttery smooth" },
-  ],
-  ideas: aiIdeasAlpha,
+  "default": [
+    { title: "Smart Campus Navigator", description: "AR-powered indoor navigation for university campuses with real-time room availability and event tracking.", tags: ["Mobile", "AR"], reasons: ["Perfect hackathon scope", "Strong mobile expertise", "High visual impact for demo"] },
+    { title: "Study Group Matchmaker", description: "AI-powered matching for study partners based on courses, schedule, and learning style.", tags: ["AI/ML", "Social"], reasons: ["Builds on your matching expertise", "Great for campus culture", "Quick to prototype"] },
+  ]
 };
 
 const statusColors = { "todo": "bg-white/10 text-text-secondary", "in-progress": "bg-accent-blue/10 text-accent-blue", "review": "bg-accent-orange/10 text-accent-orange", "done": "bg-accent-emerald/10 text-accent-emerald" };
@@ -111,46 +41,125 @@ const priorityColors = { "low": "text-text-muted", "medium": "text-accent-cyan",
 export default function TeamWorkspacePage() {
   const params = useParams();
   const teamId = (params?.teamId as string) || "1";
-  const team = TEAMS_DATA[teamId] || TEAMS_DATA["1"];
-  const members = team.members;
-
+  const { user: currentUser } = useAuth();
+  
+  const [team, setTeam] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>("chat");
   const [message, setMessage] = useState("");
-  const [messages, setMessages] = useState(team.messages);
-  const [tasks, setTasks] = useState(team.tasks);
+  const [messages, setMessages] = useState<any[]>([]);
+  const [tasks, setTasks] = useState<any[]>([]);
+  const [roles, setRoles] = useState<any[]>([]);
   const [showAddTask, setShowAddTask] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
-  const [roles, setRoles] = useState(
-    team.roles.map((r, i) => ({ user: members[i], ...r }))
-  );
   const [editingRole, setEditingRole] = useState<number | null>(null);
   const [editRoleText, setEditRoleText] = useState("");
   const [editDescText, setEditDescText] = useState("");
 
-  const sendMessage = () => {
-    if (!message.trim()) return;
-    const newMsg = { id: String(Date.now()), user: MOCK_USERS[0], content: message, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), type: "text" as const };
-    setMessages(prev => [...prev, newMsg]);
+  const [resolvedId, setResolvedId] = useState<string>("");
+
+  const fetchTeam = useCallback(async () => {
+    try {
+      const usersRes = await fetch("/api/users");
+      const users = await usersRes.json();
+      const match = users.find((u: any) => u.email === currentUser?.email);
+      const rId = match?.id ?? currentUser?.id ?? "";
+      setResolvedId(rId);
+
+      const res = await fetch(`/api/teams/${teamId}`);
+      if (!res.ok) throw new Error("Not found");
+      const data = await res.json();
+      setTeam(data);
+      setMessages(data.messages || []);
+      setTasks(data.tasks || []);
+      setRoles((data.members || []).map((m: any) => ({ ...m, desc: "Team member" })));
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  }, [teamId, currentUser]);
+
+  useEffect(() => { fetchTeam(); }, [fetchTeam]);
+
+  const sendMessage = async () => {
+    if (!message.trim() || !resolvedId) return;
+    const tempMsg = { id: `temp-${Date.now()}`, user: { ...currentUser, name: "Sending..." }, content: message, createdAt: new Date().toISOString(), type: "text" };
+    setMessages(prev => [...prev, tempMsg]);
+    const msgToSend = message;
     setMessage("");
+
+    try {
+      const res = await fetch(`/api/teams/${teamId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: resolvedId, content: msgToSend, type: "text" }),
+      });
+      if (res.ok) {
+        const saved = await res.json();
+        setMessages(prev => prev.map(m => m.id === tempMsg.id ? saved : m));
+      }
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  const addTask = () => {
-    if (!newTaskTitle.trim()) return;
-    const t: MockTask = { id: String(Date.now()), title: newTaskTitle, status: "todo", assignee: MOCK_USERS[0], priority: "medium", mood: "🧠 thinking about it" };
-    setTasks(prev => [...prev, t]);
-    setNewTaskTitle("");
-    setShowAddTask(false);
+  const addTask = async () => {
+    if (!newTaskTitle.trim() || !resolvedId) return;
+    try {
+      const res = await fetch(`/api/teams/${teamId}/tasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: newTaskTitle, createdBy: resolvedId, priority: "medium" }),
+      });
+      if (res.ok) {
+        const t = await res.json();
+        setTasks(prev => [...prev, t]);
+        setNewTaskTitle("");
+        setShowAddTask(false);
+      }
+    } catch (e) { console.error(e); }
   };
 
-  const cycleTaskStatus = (id: string) => {
-    const order: TaskStatus[] = ["todo", "in-progress", "review", "done"];
-    setTasks(prev => prev.map(t => t.id === id ? { ...t, status: order[(order.indexOf(t.status) + 1) % order.length] } : t));
+  const cycleTaskStatus = async (id: string) => {
+    const task = tasks.find(t => t.id === id);
+    if (!task) return;
+    const order = ["todo", "in-progress", "review", "done"];
+    const nextStatus = order[(order.indexOf(task.status) + 1) % order.length];
+    
+    // Optimistic update
+    setTasks(prev => prev.map(t => t.id === id ? { ...t, status: nextStatus } : t));
+    
+    try {
+      await fetch(`/api/teams/${teamId}/tasks/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+    } catch { /* ignore */ }
   };
 
   const saveRole = (i: number) => {
     setRoles(prev => prev.map((r, idx) => idx === i ? { ...r, role: editRoleText, desc: editDescText } : r));
     setEditingRole(null);
   };
+
+  const formatTime = (iso: string) => {
+    return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center animated-gradient-bg">
+        <div className="w-8 h-8 border-2 border-accent-purple border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!team) return <div className="min-h-screen flex items-center justify-center animated-gradient-bg">Team not found</div>;
+
+  const members = team.members || [];
+  const ideas = aiIdeasMap[teamId] || aiIdeasMap["default"];
 
   return (
     <div className="relative min-h-screen animated-gradient-bg">
@@ -170,7 +179,6 @@ export default function TeamWorkspacePage() {
             <p className="text-xs text-text-muted">{team.project}</p>
           </div>
 
-          {/* Channels / tabs */}
           <div className="flex-1 p-3 space-y-1">
             <div className="text-[10px] uppercase tracking-wider text-text-muted font-semibold px-2 mb-2">Workspace</div>
             {tabs.map((tab) => (
@@ -181,16 +189,15 @@ export default function TeamWorkspacePage() {
             ))}
           </div>
 
-          {/* Members */}
           <div className="p-3 border-t border-glass-border">
             <div className="text-[10px] uppercase tracking-wider text-text-muted font-semibold px-2 mb-2">Members</div>
-            {members.map((m) => (
+            {members.map((m: any) => m.user && (
               <div key={m.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm">
                 <div className="relative">
-                  <img src={m.avatar} alt={m.name} className="w-6 h-6 rounded-full bg-bg-tertiary" />
-                  {m.online && <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-accent-emerald border border-bg-primary" />}
+                  <img src={m.user.avatar} alt={m.user.name} className="w-6 h-6 rounded-full bg-bg-tertiary" />
+                  {m.user.online && <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-accent-emerald border border-bg-primary" />}
                 </div>
-                <span className="text-xs text-text-secondary truncate">{m.name}</span>
+                <span className="text-xs text-text-secondary truncate">{m.user.name}</span>
               </div>
             ))}
           </div>
@@ -198,8 +205,6 @@ export default function TeamWorkspacePage() {
 
         {/* Main content */}
         <div className="flex-1 flex flex-col min-w-0">
-          
-          {/* Team Energy Header (Desktop & Mobile) */}
           <div className="w-full bg-black/40 border-b border-glass-border p-3 sm:p-4 backdrop-blur-md relative overflow-hidden z-20">
             <div className="absolute top-0 right-0 w-64 h-64 bg-accent-purple/10 blur-[80px] rounded-full pointer-events-none" />
             
@@ -235,7 +240,7 @@ export default function TeamWorkspacePage() {
                 </div>
                 <div>
                   <div className="text-[9px] uppercase tracking-widest text-text-muted font-bold">Team Mood</div>
-                  <div className="text-xs font-bold text-accent-pink">{team.mood}</div>
+                  <div className="text-xs font-bold text-accent-pink">Pre-Hackathon Hype</div>
                 </div>
               </div>
 
@@ -251,7 +256,6 @@ export default function TeamWorkspacePage() {
             </div>
           </div>
 
-          {/* Mobile tab bar */}
           <div className="md:hidden flex items-center gap-1 p-3 border-b border-glass-border overflow-x-auto no-scrollbar bg-bg-primary/80 z-20">
             {tabs.map((tab) => (
               <button key={tab.key} onClick={() => setActiveTab(tab.key)} className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs whitespace-nowrap", activeTab === tab.key ? "bg-accent-purple/15 text-accent-purple" : "text-text-secondary")}>
@@ -264,13 +268,12 @@ export default function TeamWorkspacePage() {
             {activeTab === "chat" && (
               <motion.div key="chat" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex-1 flex flex-col">
                 <div className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-4 no-scrollbar relative z-10">
-                  {/* Shared Builder DNA Intro */}
                   <div className="w-full bg-black/40 border border-white/5 rounded-xl p-4 shadow-inner mb-6">
                     <div className="text-[10px] uppercase font-bold text-accent-purple tracking-widest mb-3 flex items-center gap-1.5">
                       <Sparkles className="w-3 h-3 text-accent-purple" /> Shared Builder DNA
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      {["prefer shipping fast", "code best at night", "survive on caffeine", "enjoy chaotic brainstorming", "love AI tooling"].map((trait, i) => (
+                      {["prefer shipping fast", "code best at night", "survive on caffeine", "love AI tooling"].map((trait, i) => (
                         <span key={i} className="flex items-center gap-1 text-[10px] text-text-primary bg-white/5 px-2 py-1 rounded-full border border-white/10">
                           <Check className="w-3 h-3 text-accent-emerald shadow-[0_0_5px_rgba(16,185,129,0.5)]" /> {trait}
                         </span>
@@ -278,14 +281,14 @@ export default function TeamWorkspacePage() {
                     </div>
                   </div>
 
-                  {messages.map((msg) => (
+                  {messages.map((msg) => msg.user && (
                     <motion.div key={msg.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={cn("flex gap-3", msg.type === "ai-suggestion" && "pl-4 border-l-2 border-accent-purple/50 bg-accent-purple/5 p-3 rounded-r-xl relative overflow-hidden")}>
                       {msg.type === "ai-suggestion" && <div className="absolute inset-0 bg-gradient-to-r from-accent-purple/10 to-transparent pointer-events-none" />}
                       <img src={msg.user.avatar} alt={msg.user.name} className="w-8 h-8 rounded-full bg-bg-tertiary shrink-0 mt-0.5 relative z-10" />
                       <div className="relative z-10">
                         <div className="flex items-center gap-2 mb-0.5">
                           <span className="text-sm font-semibold">{msg.user.name}</span>
-                          <span className="text-[10px] text-text-muted">{msg.timestamp}</span>
+                          <span className="text-[10px] text-text-muted">{formatTime(msg.createdAt)}</span>
                           {msg.type === "ai-suggestion" && <span className="px-1.5 py-0.5 rounded text-[9px] bg-accent-purple/20 text-accent-purple uppercase tracking-widest font-bold">AI Assistant</span>}
                         </div>
                         <p className={cn("text-sm leading-relaxed", msg.type === "ai-suggestion" ? "text-accent-purple font-medium" : "text-text-secondary")}>{msg.content}</p>
@@ -295,19 +298,12 @@ export default function TeamWorkspacePage() {
                 </div>
 
                 <div className="relative z-10 bg-bg-secondary/80 backdrop-blur-md border-t border-glass-border">
-                  {/* Quick Actions Scroll Area */}
                   <div className="flex items-center gap-2 overflow-x-auto no-scrollbar px-4 pt-3 pb-2">
                     <button onClick={() => setMessage("I've been thinking about an AI-powered...")} className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 text-[10px] font-bold uppercase tracking-wider text-text-secondary hover:text-text-primary transition-colors">
                       <Lightbulb className="w-3 h-3 text-accent-purple" /> Pitch Idea
                     </button>
                     <button onClick={() => setMessage("Here's my deadline panic playlist 🎧")} className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 text-[10px] font-bold uppercase tracking-wider text-text-secondary hover:text-text-primary transition-colors">
                       <Headphones className="w-3 h-3 text-accent-pink" /> Share Playlist
-                    </button>
-                    <button onClick={() => setMessage("Anyone up for a quick brainstorm? ⚡")} className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 text-[10px] font-bold uppercase tracking-wider text-text-secondary hover:text-text-primary transition-colors">
-                      <Zap className="w-3 h-3 text-accent-cyan" /> Start Brainstorm
-                    </button>
-                    <button onClick={() => setMessage("Time for a late night session ☕")} className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 text-[10px] font-bold uppercase tracking-wider text-text-secondary hover:text-text-primary transition-colors">
-                      <Coffee className="w-3 h-3 text-amber-500" /> Late Night Session
                     </button>
                   </div>
 
@@ -350,9 +346,9 @@ export default function TeamWorkspacePage() {
                           <div className={cn("text-sm font-medium", task.status === "done" && "line-through text-text-muted")}>{task.title}</div>
                           {task.mood && <div className="text-[10px] text-text-muted mt-1 font-medium">{task.mood}</div>}
                         </div>
-                        <span className={cn("text-[10px] font-medium uppercase hidden sm:inline", priorityColors[task.priority])}>{task.priority}</span>
-                        <span className={cn("px-2 py-0.5 rounded-full text-[10px] cursor-pointer", statusColors[task.status])} onClick={() => cycleTaskStatus(task.id)}>{task.status}</span>
-                        <img src={task.assignee.avatar} alt="" className="w-6 h-6 rounded-full bg-bg-tertiary ring-1 ring-white/10" />
+                        <span className={cn("text-[10px] font-medium uppercase hidden sm:inline", (priorityColors as any)[task.priority])}>{task.priority}</span>
+                        <span className={cn("px-2 py-0.5 rounded-full text-[10px] cursor-pointer", (statusColors as any)[task.status])} onClick={() => cycleTaskStatus(task.id)}>{task.status}</span>
+                        {task.assignee && <img src={task.assignee.avatar} alt="" className="w-6 h-6 rounded-full bg-bg-tertiary ring-1 ring-white/10" />}
                       </GlassCard>
                     </motion.div>
                   ))}
@@ -365,7 +361,7 @@ export default function TeamWorkspacePage() {
                 <h3 className="text-lg font-semibold mb-6">Role Assignment</h3>
                 <p className="text-xs text-text-muted mb-4 -mt-4">Click a role to edit it</p>
                 <div className="space-y-4">
-                  {roles.map((r, i) => (
+                  {roles.map((r, i) => r.user && (
                     <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}>
                       <GlassCard hover={false} className="p-5">
                         <div className="flex items-center gap-4">
@@ -403,13 +399,13 @@ export default function TeamWorkspacePage() {
                   <h3 className="text-lg font-semibold">AI Project Ideas</h3>
                 </div>
                 <div className="space-y-4">
-                  {team.ideas.map((idea, i) => (
+                  {ideas.map((idea, i) => (
                     <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}>
                       <GlassCard className="p-5">
                         <h4 className="font-semibold mb-2">{idea.title}</h4>
                         <p className="text-sm text-text-secondary leading-relaxed mb-3">{idea.description}</p>
                         <div className="flex flex-wrap gap-2 mt-4">
-                          {idea.tags.map((tag) => (
+                          {idea.tags.map((tag: string) => (
                             <span key={tag} className="px-2 py-0.5 rounded-lg bg-white/5 border border-white/10 text-text-secondary text-[10px] uppercase font-bold">{tag}</span>
                           ))}
                         </div>
@@ -419,7 +415,7 @@ export default function TeamWorkspacePage() {
                               <Flame className="w-3 h-3" /> Why this fits your team
                             </div>
                             <div className="space-y-1.5">
-                              {idea.reasons.map((reason, idx) => (
+                              {idea.reasons.map((reason: string, idx: number) => (
                                 <div key={idx} className="flex items-start gap-2 text-[11px] text-text-primary">
                                   <Check className="w-3 h-3 text-accent-cyan mt-0.5 shrink-0 shadow-[0_0_5px_rgba(34,211,238,0.5)]" />
                                   <span>{reason}</span>
@@ -431,9 +427,6 @@ export default function TeamWorkspacePage() {
                       </GlassCard>
                     </motion.div>
                   ))}
-                </div>
-                <div className="mt-6">
-                  <GlowButton variant="secondary" icon={<Sparkles className="w-4 h-4" />}>Generate More Ideas</GlowButton>
                 </div>
               </motion.div>
             )}
