@@ -175,8 +175,10 @@ http://localhost:3000
 Modern animated landing experience with glassmorphism UI.
 
 ## Discover Builders
+<img width="1267" height="792" alt="image" src="https://github.com/user-attachments/assets/79a41ab0-2be1-43ea-9afa-01e79351b703" />
 
 Swipe and discover compatible teammates.
+<img width="1267" height="792" alt="image" src="https://github.com/user-attachments/assets/41624fac-b1d3-49b4-b861-a37bfa9a1177" />
 
 ## Builder Profiles
 
