@@ -169,7 +169,8 @@ http://localhost:3000
 
 # 📸 Screenshots
 
-## Landing Page
+<img width="1267" height="792" alt="image" src="https://github.com/user-attachments/assets/5926de8f-101e-41d1-a62c-17556023d096" />
+
 
 Modern animated landing experience with glassmorphism UI.
 
@@ -179,7 +180,8 @@ Swipe and discover compatible teammates.
 
 ## Builder Profiles
 
-Detailed builder identity and collaboration preferences.
+<img width="1267" height="792" alt="image" src="https://github.com/user-attachments/assets/a7cc7752-81ca-448d-a0bb-74dd74ff9895" />
+
 
 ---
 
